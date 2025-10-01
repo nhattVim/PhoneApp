@@ -1,8 +1,9 @@
 package com.example.phoneapp
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -18,16 +19,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -40,60 +45,105 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.phoneapp.ui.theme.PhoneAppTheme
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.navigation.NavDestination
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.example.phoneapp.ui.theme.PhoneAppTheme
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            PhoneAppTheme {
-                ContactListScreen()
-            }
+            PhoneAppTheme { PhoneAppNavHost() }
         }
     }
 }
 
-@Preview(showBackground = true, showSystemUi = true)
+sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
+    object Contacts : Screen("contacts", "Danh bạ", Icons.Default.Phone)
+    object Favorites : Screen("favorites", "Yêu thích", Icons.Default.Favorite)
+    object Settings : Screen("settings", "Cài đặt", Icons.Default.Settings)
+}
+
+val bottomNavItems = listOf(
+    Screen.Contacts,
+    Screen.Favorites,
+    Screen.Settings
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GreetingPreview() {
-    PhoneAppTheme {
-        ContactListScreen()
+fun PhoneAppNavHost() {
+    val navController = rememberNavController()
+
+    Scaffold(
+        topBar = {
+            val currentDestination = navController.currentBackStackEntryAsState().value?.destination
+            val currentScreen = bottomNavItems.find { it.route == currentDestination?.route }
+            TopBar(title = currentScreen?.label ?: "Ứng dụng")
+        },
+        bottomBar = {
+            NavigationBar {
+                val currentDestination =
+                    navController.currentBackStackEntryAsState().value?.destination
+                bottomNavItems.forEach { screen ->
+                    NavigationBarItem(
+                        icon = { Icon(screen.icon, contentDescription = screen.label) },
+                        label = { Text(screen.label) },
+                        selected = currentDestination.isRouteActive(screen.route),
+                        onClick = {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Contacts.route,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable(Screen.Contacts.route) { ContactsContent() }
+            composable(Screen.Favorites.route) { PlaceholderScreen("Tab Yêu thích đang trống") }
+            composable(Screen.Settings.route) { PlaceholderScreen("Tab Cài đặt — tuỳ chỉnh ở đây") }
+        }
     }
+}
+
+fun NavDestination?.isRouteActive(route: String): Boolean {
+    return this?.route == route
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TopBar() {
+fun TopBar(title: String) {
     TopAppBar(
-        title = { Text("Danh Bạ Điện Thoại") },
-        navigationIcon = {
-            IconButton(onClick = { }) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Quay lại"
-                )
-            }
-        },
+        title = { Text(title) },
         actions = {
             IconButton(onClick = { }) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Tìm kiếm"
-                )
+                Icon(Icons.Default.Search, contentDescription = "Tìm kiếm")
             }
         },
-        modifier = Modifier.background(Color.Blue)
+        modifier = Modifier.background(Color(0xFF1565C0))
     )
 }
 
@@ -106,7 +156,7 @@ val sampleContacts = mutableStateListOf(
 )
 
 @Composable
-fun ContactListScreen() {
+fun ContactsContent() {
     val context = LocalContext.current
     var name by remember { mutableStateOf(TextFieldValue()) }
     var phoneNumber by remember { mutableStateOf(TextFieldValue()) }
@@ -121,7 +171,6 @@ fun ContactListScreen() {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        TopBar()
 
         TextField(
             value = searchQuery,
@@ -160,9 +209,8 @@ fun ContactListScreen() {
                         Icon(Icons.Default.Edit, contentDescription = "Sửa")
                     }
 
-                    Button(onClick = { deletingContact = contact }) {
+                    IconButton(onClick = { deletingContact = contact }) {
                         Icon(Icons.Default.Delete, contentDescription = "Xóa")
-                        Text("Xóa", modifier = Modifier.padding(start = 4.dp))
                     }
                 }
             }
@@ -272,12 +320,24 @@ fun ContactListScreen() {
     }
 }
 
+@Composable
+fun PlaceholderScreen(text: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = text)
+    }
+}
+
 fun makeCall(context: Context, phoneNumber: String) {
     val intent = Intent(Intent.ACTION_CALL).apply {
         data = "tel:$phoneNumber".toUri()
     }
 
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
+    if (context.checkSelfPermission(Manifest.permission.CALL_PHONE)
         != PackageManager.PERMISSION_GRANTED
     ) {
         if (context is ComponentActivity) {

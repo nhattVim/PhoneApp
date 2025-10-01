@@ -56,4 +56,16 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    val nav_version = "2.9.5"
+    val room_version = "2.8.0"
+
+    implementation("androidx.navigation:navigation-compose:${nav_version}")
+    implementation("androidx.room:room-runtime:$room_version")
+    implementation("androidx.room:room-ktx:${room_version}")
+    implementation("androidx.room:room-rxjava2:${room_version}")
+    implementation("androidx.room:room-rxjava3:${room_version}")
+    implementation("androidx.room:room-guava:${room_version}")
+    testImplementation("androidx.room:room-testing:${room_version}")
+    implementation("androidx.room:room-paging:${room_version}")
 }

@@ -1,6 +1,7 @@
 package com.example.phoneapp
 
 import android.Manifest
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,38 +12,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -52,14 +28,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.phoneapp.data.AppDatabase
+import com.example.phoneapp.data.Contact
 import com.example.phoneapp.ui.theme.PhoneAppTheme
 
+// Lớp Application để khởi tạo database
+class PhoneApplication : Application() {
+    val database: AppDatabase by lazy { AppDatabase.getDatabase(this) }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,6 +54,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ... (Screen, bottomNavItems, isRouteActive, TopBar không đổi) ...
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Contacts : Screen("contacts", "Danh bạ", Icons.Default.Phone)
     object Favorites : Screen("favorites", "Yêu thích", Icons.Default.Favorite)
@@ -122,7 +106,14 @@ fun PhoneAppNavHost() {
             startDestination = Screen.Contacts.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Contacts.route) { ContactsContent() }
+            composable(Screen.Contacts.route) {
+                // Khởi tạo ViewModel ở đây
+                val context = LocalContext.current
+                val viewModel: ContactViewModel = viewModel(
+                    factory = ContactViewModelFactory((context.applicationContext as PhoneApplication).database.contactDao())
+                )
+                ContactsContent(viewModel)
+            }
             composable(Screen.Favorites.route) { PlaceholderScreen("Tab Yêu thích đang trống") }
             composable(Screen.Settings.route) { PlaceholderScreen("Tab Cài đặt — tuỳ chỉnh ở đây") }
         }
@@ -147,17 +138,13 @@ fun TopBar(title: String) {
     )
 }
 
-data class Contact(val id: Int, val name: String, val phoneNumber: String)
 
-val sampleContacts = mutableStateListOf(
-    Contact(1, "Nguyen Van A", "0123456789"),
-    Contact(2, "Le Thi B", "0987654321"),
-    Contact(3, "Tran Van C", "0121987654")
-)
-
+// --- HÀM CONTACTSCONTENT ĐÃ ĐƯỢC CẬP NHẬT ---
 @Composable
-fun ContactsContent() {
+fun ContactsContent(viewModel: ContactViewModel) {
     val context = LocalContext.current
+    val allContacts by viewModel.allContacts.collectAsState()
+
     var name by remember { mutableStateOf(TextFieldValue()) }
     var phoneNumber by remember { mutableStateOf(TextFieldValue()) }
     var searchQuery by remember { mutableStateOf(TextFieldValue()) }
@@ -171,34 +158,32 @@ fun ContactsContent() {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-
         TextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             label = { Text("Tìm kiếm (Tên / SĐT)") },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(bottom = 8.dp)
         )
 
-        val filteredContacts = sampleContacts.filter {
+        val filteredContacts = allContacts.filter {
             it.name.contains(searchQuery.text, ignoreCase = true) ||
                     it.phoneNumber.contains(searchQuery.text)
         }
 
         LazyColumn(modifier = Modifier.weight(1f)) {
-            items(filteredContacts.size) { index ->
-                val contact = filteredContacts[index]
+            items(filteredContacts) { contact ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(8.dp)
+                        .padding(vertical = 8.dp)
                         .clickable { selectedContact = contact },
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = contact.name, fontSize = 18.sp)
-                        Text(text = contact.phoneNumber, fontSize = 16.sp)
+                        Text(text = contact.phoneNumber, fontSize = 16.sp, color = Color.Gray)
                     }
 
                     IconButton(onClick = {
@@ -222,7 +207,7 @@ fun ContactsContent() {
             label = { Text("Tên liên hệ") },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(vertical = 4.dp)
         )
 
         TextField(
@@ -231,33 +216,28 @@ fun ContactsContent() {
             label = { Text("Số điện thoại") },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(vertical = 4.dp)
         )
 
         Button(
             onClick = {
-                if (name.text.isNotBlank() && phoneNumber.text.isNotBlank()) {
-                    val phone = phoneNumber.text.trim()
-
-                    if (phone.matches(Regex("^\\d{10}$"))) {
+                val contactName = name.text.trim()
+                val contactPhone = phoneNumber.text.trim()
+                if (contactName.isNotBlank() && contactPhone.isNotBlank()) {
+                    if (contactPhone.matches(Regex("^\\d{10}$"))) {
                         if (editingContact == null) {
-                            val newContact = Contact(
-                                id = (sampleContacts.maxOfOrNull { it.id } ?: 0) + 1,
-                                name = name.text,
-                                phoneNumber = phone
-                            )
-                            sampleContacts.add(newContact)
+                            // THÊM MỚI
+                            viewModel.addContact(contactName, contactPhone)
                         } else {
-                            val index = sampleContacts.indexOfFirst { it.id == editingContact!!.id }
-                            if (index != -1) {
-                                sampleContacts[index] = editingContact!!.copy(
-                                    name = name.text,
-                                    phoneNumber = phone
-                                )
-                            }
+                            // CẬP NHẬT
+                            val updatedContact = editingContact!!.copy(
+                                name = contactName,
+                                phoneNumber = contactPhone
+                            )
+                            viewModel.updateContact(updatedContact)
                             editingContact = null
                         }
-
+                        // Reset fields
                         name = TextFieldValue("")
                         phoneNumber = TextFieldValue("")
                     } else {
@@ -269,23 +249,29 @@ fun ContactsContent() {
                     }
                 }
             },
-            modifier = Modifier.padding(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         ) {
             Text(if (editingContact == null) "Thêm liên hệ" else "Cập nhật liên hệ")
         }
     }
 
+    // Dialog chi tiết
     if (selectedContact != null) {
         AlertDialog(
             onDismissRequest = { selectedContact = null },
             confirmButton = {
-                TextButton(onClick = { selectedContact = null }) {
-                    Text("Đóng")
-                }
                 TextButton(onClick = {
-                    makeCall(context, phoneNumber = selectedContact?.phoneNumber.toString())
+                    makeCall(context, selectedContact!!.phoneNumber)
+                    selectedContact = null
                 }) {
                     Text("Gọi")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedContact = null }) {
+                    Text("Đóng")
                 }
             },
             title = { Text("Chi tiết Liên Hệ") },
@@ -298,12 +284,14 @@ fun ContactsContent() {
         )
     }
 
+    // Dialog xóa
     if (deletingContact != null) {
         AlertDialog(
             onDismissRequest = { deletingContact = null },
             confirmButton = {
                 TextButton(onClick = {
-                    sampleContacts.remove(deletingContact)
+                    // XÓA
+                    viewModel.deleteContact(deletingContact!!)
                     deletingContact = null
                 }) {
                     Text("Xóa")
@@ -320,6 +308,7 @@ fun ContactsContent() {
     }
 }
 
+// ... (PlaceholderScreen và makeCall không đổi) ...
 @Composable
 fun PlaceholderScreen(text: String) {
     Column(

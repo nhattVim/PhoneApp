@@ -54,15 +54,17 @@ class MainActivity : ComponentActivity() {
 }
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
-    object Contacts : Screen("contacts", "Danh bạ", Icons.Default.Phone)
+    object Numboards : Screen("numboards", "Ban phim", Icons.Default.Phone)
+    object Contacts : Screen("contacts", "Danh bạ", Icons.Default.Person)
     object Favorites : Screen("favorites", "Yêu thích", Icons.Default.Favorite)
     object Settings : Screen("settings", "Cài đặt", Icons.Default.Settings)
 }
 
 val bottomNavItems = listOf(
+    Screen.Numboards,
     Screen.Contacts,
     Screen.Favorites,
-    Screen.Settings
+    Screen.Settings,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,7 +103,7 @@ fun PhoneAppNavHost() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Contacts.route,
+            startDestination = Screen.Numboards.route,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Contacts.route) {
@@ -110,10 +112,11 @@ fun PhoneAppNavHost() {
                 val viewModel: ContactViewModel = viewModel(
                     factory = ContactViewModelFactory((context.applicationContext as PhoneApplication).database.contactDao())
                 )
-                ContactsContent(viewModel)
+                ContactsScreen(viewModel)
             }
-            composable(Screen.Favorites.route) { PlaceholderScreen("Tab Yêu thích đang trống") }
-            composable(Screen.Settings.route) { PlaceholderScreen("Tab Cài đặt — tuỳ chỉnh ở đây") }
+            composable(Screen.Favorites.route) { PlaceholderScreen("Tuyet Khung") }
+            composable(Screen.Settings.route) { PlaceholderScreen("Thi Khung") }
+            composable(Screen.Numboards.route) { NumboardsScreen() }
         }
     }
 }
@@ -138,7 +141,7 @@ fun TopBar(title: String) {
 
 
 @Composable
-fun ContactsContent(viewModel: ContactViewModel) {
+fun ContactsScreen(viewModel: ContactViewModel) {
     val context = LocalContext.current
     val allContacts by viewModel.allContacts.collectAsState()
 
@@ -202,6 +205,7 @@ fun ContactsContent(viewModel: ContactViewModel) {
             value = name,
             onValueChange = { name = it },
             label = { Text("Tên liên hệ") },
+            singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
@@ -211,6 +215,7 @@ fun ContactsContent(viewModel: ContactViewModel) {
             value = phoneNumber,
             onValueChange = { phoneNumber = it },
             label = { Text("Số điện thoại") },
+            singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
@@ -299,6 +304,115 @@ fun ContactsContent(viewModel: ContactViewModel) {
             title = { Text("Xác nhận xóa") },
             text = { Text("Bạn có chắc muốn xóa ${deletingContact?.name}?") }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NumboardsScreen() {
+    val context = LocalContext.current
+    var phoneNumber by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = phoneNumber.ifEmpty { "Nhập số để gọi" },
+            fontSize = 32.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            color = if (phoneNumber.isEmpty()) Color.Gray else Color.Black
+
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Column(
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val rows = listOf(
+                listOf("1", "2", "3"),
+                listOf("4", "5", "6"),
+                listOf("7", "8", "9"),
+                listOf("*", "0", "#")
+            )
+
+            rows.forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    row.forEach { number ->
+                        Button(
+                            onClick = { phoneNumber += number },
+                            modifier = Modifier
+                                .size(80.dp),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Text(
+                                text = number,
+                                fontSize = 24.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Button(
+                onClick = {
+                    if (phoneNumber.isNotBlank()) {
+                        makeCall(context, phoneNumber)
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "Nhập số điện thoại trước khi gọi",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)),
+                modifier = Modifier.size(80.dp),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Phone,
+                    contentDescription = "Gọi",
+                    tint = Color.White
+                )
+            }
+
+            Button(
+                onClick = {
+                    if (phoneNumber.isNotEmpty()) {
+                        phoneNumber = phoneNumber.dropLast(1)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                modifier = Modifier
+                    .size(80.dp),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Xóa",
+                    tint = Color.White
+                )
+            }
+        }
     }
 }
 

@@ -39,7 +39,6 @@ import com.example.phoneapp.data.AppDatabase
 import com.example.phoneapp.data.Contact
 import com.example.phoneapp.ui.theme.PhoneAppTheme
 
-// Lớp Application để khởi tạo database
 class PhoneApplication : Application() {
     val database: AppDatabase by lazy { AppDatabase.getDatabase(this) }
 }
@@ -54,7 +53,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ... (Screen, bottomNavItems, isRouteActive, TopBar không đổi) ...
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Contacts : Screen("contacts", "Danh bạ", Icons.Default.Phone)
     object Favorites : Screen("favorites", "Yêu thích", Icons.Default.Favorite)
@@ -139,7 +137,6 @@ fun TopBar(title: String) {
 }
 
 
-// --- HÀM CONTACTSCONTENT ĐÃ ĐƯỢC CẬP NHẬT ---
 @Composable
 fun ContactsContent(viewModel: ContactViewModel) {
     val context = LocalContext.current
@@ -226,10 +223,8 @@ fun ContactsContent(viewModel: ContactViewModel) {
                 if (contactName.isNotBlank() && contactPhone.isNotBlank()) {
                     if (contactPhone.matches(Regex("^\\d{10}$"))) {
                         if (editingContact == null) {
-                            // THÊM MỚI
                             viewModel.addContact(contactName, contactPhone)
                         } else {
-                            // CẬP NHẬT
                             val updatedContact = editingContact!!.copy(
                                 name = contactName,
                                 phoneNumber = contactPhone
@@ -237,7 +232,6 @@ fun ContactsContent(viewModel: ContactViewModel) {
                             viewModel.updateContact(updatedContact)
                             editingContact = null
                         }
-                        // Reset fields
                         name = TextFieldValue("")
                         phoneNumber = TextFieldValue("")
                     } else {
@@ -308,7 +302,6 @@ fun ContactsContent(viewModel: ContactViewModel) {
     }
 }
 
-// ... (PlaceholderScreen và makeCall không đổi) ...
 @Composable
 fun PlaceholderScreen(text: String) {
     Column(

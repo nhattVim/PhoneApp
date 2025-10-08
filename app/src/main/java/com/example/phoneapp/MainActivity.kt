@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -38,6 +39,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.phoneapp.data.AppDatabase
 import com.example.phoneapp.data.Contact
 import com.example.phoneapp.ui.theme.PhoneAppTheme
+import android.provider.ContactsContract
 
 class PhoneApplication : Application() {
     val database: AppDatabase by lazy { AppDatabase.getDatabase(this) }
@@ -76,7 +78,7 @@ fun PhoneAppNavHost() {
         topBar = {
             val currentDestination = navController.currentBackStackEntryAsState().value?.destination
             val currentScreen = bottomNavItems.find { it.route == currentDestination?.route }
-            TopBar(title = currentScreen?.label ?: "Ứng dụng")
+            TopBar(title = currentScreen?.label ?: "Ứng dụng", navController)
         },
         bottomBar = {
             NavigationBar {
@@ -107,7 +109,6 @@ fun PhoneAppNavHost() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Contacts.route) {
-                // Khởi tạo ViewModel ở đây
                 val context = LocalContext.current
                 val viewModel: ContactViewModel = viewModel(
                     factory = ContactViewModelFactory((context.applicationContext as PhoneApplication).database.contactDao())
@@ -127,12 +128,18 @@ fun NavDestination?.isRouteActive(route: String): Boolean {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TopBar(title: String) {
+fun TopBar(title: String, navController: NavController) {
     TopAppBar(
         title = { Text(title) },
         actions = {
-            IconButton(onClick = { }) {
-                Icon(Icons.Default.Search, contentDescription = "Tìm kiếm")
+            IconButton(onClick = {
+                navController.navigate(Screen.Settings.route) {
+                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }) {
+                Icon(Icons.Default.Settings, contentDescription = "Tìm kiếm")
             }
         },
         modifier = Modifier.background(Color(0xFF1565C0))
@@ -143,6 +150,8 @@ fun TopBar(title: String) {
 @Composable
 fun ContactsScreen(viewModel: ContactViewModel) {
     val context = LocalContext.current
+    var permissionGranted by remember { mutableStateOf(false) }
+    var phoneContacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
     val allContacts by viewModel.allContacts.collectAsState()
 
     var name by remember { mutableStateOf(TextFieldValue()) }
@@ -153,11 +162,39 @@ fun ContactsScreen(viewModel: ContactViewModel) {
     var editingContact by remember { mutableStateOf<Contact?>(null) }
     var deletingContact by remember { mutableStateOf<Contact?>(null) }
 
+    LaunchedEffect(Unit) {
+        if (ActivityCompat.checkSelfPermission(
+                context, Manifest.permission.READ_CONTACTS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionGranted = true
+            phoneContacts = getContactsFromPhone(context)
+        } else {
+            if (context is ComponentActivity) {
+                ActivityCompat.requestPermissions(
+                    context,
+                    arrayOf(Manifest.permission.READ_CONTACTS),
+                    200
+                )
+            }
+        }
+    }
+
+    val mergedContacts = remember(phoneContacts, allContacts) {
+        (phoneContacts + allContacts).distinctBy { it.phoneNumber }
+    }
+
+    val filteredContacts = mergedContacts.filter {
+        it.name.contains(searchQuery.text, ignoreCase = true) ||
+                it.phoneNumber.contains(searchQuery.text)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        // Ô tìm kiếm
         TextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
@@ -167,40 +204,52 @@ fun ContactsScreen(viewModel: ContactViewModel) {
                 .padding(bottom = 8.dp)
         )
 
-        val filteredContacts = allContacts.filter {
-            it.name.contains(searchQuery.text, ignoreCase = true) ||
-                    it.phoneNumber.contains(searchQuery.text)
-        }
+        if (!permissionGranted) {
+            Text(
+                "Ứng dụng chưa có quyền đọc danh bạ!",
+                color = Color.Red,
+                modifier = Modifier.padding(8.dp)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                items(filteredContacts) { contact ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                makeCall(context, contact.phoneNumber)
+                            }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(contact.name, fontSize = 18.sp)
+                            Text(contact.phoneNumber, color = Color.Gray)
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(filteredContacts) { contact ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .clickable { selectedContact = contact },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = contact.name, fontSize = 18.sp)
-                        Text(text = contact.phoneNumber, fontSize = 16.sp, color = Color.Gray)
-                    }
+                        }
 
-                    IconButton(onClick = {
-                        editingContact = contact
-                        name = TextFieldValue(contact.name)
-                        phoneNumber = TextFieldValue(contact.phoneNumber)
-                    }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Sửa")
-                    }
+                        IconButton(onClick = {
+                            editingContact = contact
+                            name = TextFieldValue(contact.name)
+                            phoneNumber = TextFieldValue(contact.phoneNumber)
+                        }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Sửa")
+                        }
 
-                    IconButton(onClick = { deletingContact = contact }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Xóa")
+                        IconButton(onClick = { deletingContact = contact }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Xóa")
+                        }
                     }
                 }
             }
         }
 
+        // Nhập tên & số điện thoại
         TextField(
             value = name,
             onValueChange = { name = it },
@@ -257,12 +306,12 @@ fun ContactsScreen(viewModel: ContactViewModel) {
     }
 
     // Dialog chi tiết
-    if (selectedContact != null) {
+    selectedContact?.let {
         AlertDialog(
             onDismissRequest = { selectedContact = null },
             confirmButton = {
                 TextButton(onClick = {
-                    makeCall(context, selectedContact!!.phoneNumber)
+                    makeCall(context, it.phoneNumber)
                     selectedContact = null
                 }) {
                     Text("Gọi")
@@ -276,21 +325,20 @@ fun ContactsScreen(viewModel: ContactViewModel) {
             title = { Text("Chi tiết Liên Hệ") },
             text = {
                 Column {
-                    Text("Tên: ${selectedContact?.name}")
-                    Text("Số điện thoại: ${selectedContact?.phoneNumber}")
+                    Text("Tên: ${it.name}")
+                    Text("Số điện thoại: ${it.phoneNumber}")
                 }
             }
         )
     }
 
     // Dialog xóa
-    if (deletingContact != null) {
+    deletingContact?.let {
         AlertDialog(
             onDismissRequest = { deletingContact = null },
             confirmButton = {
                 TextButton(onClick = {
-                    // XÓA
-                    viewModel.deleteContact(deletingContact!!)
+                    viewModel.deleteContact(it)
                     deletingContact = null
                 }) {
                     Text("Xóa")
@@ -302,7 +350,7 @@ fun ContactsScreen(viewModel: ContactViewModel) {
                 }
             },
             title = { Text("Xác nhận xóa") },
-            text = { Text("Bạn có chắc muốn xóa ${deletingContact?.name}?") }
+            text = { Text("Bạn có chắc muốn xóa ${it.name}?") }
         )
     }
 }
@@ -325,8 +373,6 @@ fun NumboardsScreen() {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 16.dp),
-            color = if (phoneNumber.isEmpty()) Color.Gray else Color.Black
-
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -448,4 +494,33 @@ fun makeCall(context: Context, phoneNumber: String) {
     } else {
         context.startActivity(intent)
     }
+}
+
+fun getContactsFromPhone(context: Context): List<Contact> {
+    val contacts = mutableListOf<Contact>()
+    val contentResolver = context.contentResolver
+
+    val cursor = contentResolver.query(
+        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+        arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        ),
+        null,
+        null,
+        "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+    )
+
+    cursor?.use {
+        val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+        val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+
+        while (it.moveToNext()) {
+            val name = it.getString(nameIndex)
+            val number = it.getString(numberIndex)
+            contacts.add(Contact(name = name, phoneNumber = number))
+        }
+    }
+
+    return contacts
 }
